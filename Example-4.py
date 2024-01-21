@@ -1,46 +1,42 @@
 from pyspark.sql import SparkSession
-from pyspark.ml.feature import VectorAssembler
-from pyspark.ml.classification import LogisticRegression
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
-from pyspark.ml import Pipeline
+from pyspark.sql.functions import col, count, avg
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Create a Spark session
-spark = SparkSession.builder.appName("PySparkMLExample").getOrCreate()
+spark = SparkSession.builder.appName("EcommerceAnalysis").getOrCreate()
 
-# Load the Iris dataset (you can replace it with your own dataset)
-# For this example, I'm using the built-in Iris dataset available in PySpark
-iris_df = spark.read.format("libsvm").load("data/mllib/sample_libsvm_data.txt")
+# Simulate a hypothetical e-commerce dataset
+data = [
+    (1, "John", "Electronics", 100.0, "2022-01-01"),
+    (2, "Jane", "Clothing", 50.0, "2022-01-01"),
+    (3, "Bob", "Electronics", 120.0, "2022-01-02"),
+    # ... more data ...
+]
 
-# Display the first few rows of the dataset
-iris_df.show(5)
+columns = ["CustomerID", "CustomerName", "Category", "AmountSpent", "PurchaseDate"]
 
-# Prepare the features by assembling them into a single vector
-feature_columns = iris_df.columns[:-1]
-assembler = VectorAssembler(inputCols=feature_columns, outputCol="features")
-assembled_data = assembler.transform(iris_df)
+df = spark.createDataFrame(data, columns)
 
-# Split the data into training and testing sets
-(training_data, testing_data) = assembled_data.randomSplit([0.8, 0.2], seed=42)
+df.show()
 
-# Create a Logistic Regression model
-lr = LogisticRegression(featuresCol="features", labelCol="label")
+category_counts = df.groupBy("Category").agg(count("*").alias("TotalPurchases"), avg("AmountSpent").alias("AvgAmountSpent"))
+category_counts.show()
 
-# Create a pipeline with the assembler and the logistic regression model
-pipeline = Pipeline(stages=[assembler, lr])
+# Visualize the results using Seaborn and Matplotlib
+sns.set(style="whitegrid")
+plt.figure(figsize=(10, 6))
 
-# Train the model
-model = pipeline.fit(training_data)
+sns.barplot(x="Category", y="TotalPurchases", data=category_counts.toPandas(), palette="viridis")
+plt.title("Total Purchases per Category")
+plt.xlabel("Category")
+plt.ylabel("Total Purchases")
+plt.show()
 
-# Make predictions on the testing data
-predictions = model.transform(testing_data)
+plt.figure(figsize=(10, 6))
+sns.boxplot(x="Category", y="AvgAmountSpent", data=category_counts.toPandas(), palette="magma")
+plt.title("Average Amount Spent per Category")
+plt.xlabel("Category")
+plt.ylabel("Average Amount Spent")
+plt.show()
 
-# Display the predictions
-predictions.select("label", "prediction", "probability").show(5)
-
-# Evaluate the model
-evaluator = BinaryClassificationEvaluator(labelCol="label", rawPredictionCol="rawPrediction", metricName="areaUnderROC")
-area_under_roc = evaluator.evaluate(predictions)
-print(f"Area under ROC curve: {area_under_roc}")
-
-# Stop the Spark session
 spark.stop()
