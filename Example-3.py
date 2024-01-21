@@ -1,23 +1,43 @@
-from pyspark import SparkContext
-from pyspark.streaming import StreamingContext
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.classification import RandomForestClassifier
+from pyspark.ml import Pipeline
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 
+# Create a Spark session
+spark = SparkSession.builder.appName("RandomForestExample").getOrCreate()
 
-sc = SparkContext("local[2]", "SparkStreamingExample")
+# Load the Iris dataset
+from sklearn.datasets import load_iris
+import pandas as pd
 
-ssc = StreamingContext(sc, 1)
+iris = load_iris()
+iris_df = pd.DataFrame(data=iris.data, columns=iris.feature_names)
+iris_df["label"] = iris.target
 
-lines = ssc.socketTextStream("localhost", 9999)
+# Create a PySpark DataFrame from the Pandas DataFrame
+df = spark.createDataFrame(iris_df)
 
-words = lines.flatMap(lambda line: line.split(" "))
+df.show()
 
-word_count_tuples = words.map(lambda word: (word, 1))
+feature_cols = iris.feature_names
+assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+df_features = assembler.transform(df)
 
-word_counts = word_count_tuples.reduceByKey(lambda x, y: x + y)
+# Machine Learning - Random Forest Classifier
+rf = RandomForestClassifier(featuresCol="features", labelCol="label", numTrees=10)
+model = rf.fit(df_features)
 
-word_counts.pprint()
+# Display feature importance
+print("Feature Importance:")
+for i, importance in enumerate(model.featureImportances.toArray()):
+    print(f"{feature_cols[i]}: {importance}")
 
-# Start the StreamingContext
-ssc.start()
+# Model Evaluation
+predictions = model.transform(df_features)
+evaluator = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="accuracy")
+accuracy = evaluator.evaluate(predictions)
 
-# Await termination of the StreamingContext
-ssc.awaitTermination()
+print(f"Accuracy: {accuracy}")
+
+spark.stop()
