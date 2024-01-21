@@ -1,29 +1,26 @@
 from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.regression import LinearRegression
+from pyspark.ml import Pipeline
 
-spark = SparkSession.builder.appName("SparkSQLExample").getOrCreate()
+spark = SparkSession.builder.appName("LinearRegressionExample").getOrCreate()
 
-people_df = spark.read.format("csv").option("header", "true").option("inferSchema", "true").load("file:///path/to/spark-3.1.2-bin-hadoop3.2/examples/src/main/resources/people.csv")
+data = [(1.0, 2.0, 3.0), (2.0, 3.0, 4.0), (3.0, 4.0, 5.0), (4.0, 5.0, 6.0), (5.0, 6.0, 7.0)]
 
-people_df.createOrReplaceTempView("people_table")
+schema = ["Feature1", "Feature2", "Label"]
 
-all_columns_query = spark.sql("SELECT * FROM people_table")
+df = spark.createDataFrame(data, schema=schema)
 
-specific_columns_query = spark.sql("SELECT name, age FROM people_table")
+df.show()
 
-age_filter_query = spark.sql("SELECT * FROM people_table WHERE age >= 30")
+feature_cols = ["Feature1", "Feature2"]
+assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+df_features = assembler.transform(df)
 
-group_by_query = spark.sql("SELECT age, COUNT(*) as count FROM people_table GROUP BY age ORDER BY age")
+lr = LinearRegression(featuresCol="features", labelCol="Label")
+model = lr.fit(df_features)
 
-print("All Columns Query:")
-all_columns_query.show()
-
-print("Specific Columns Query:")
-specific_columns_query.show()
-
-print("Age Filter Query:")
-age_filter_query.show()
-
-print("Group By Query:")
-group_by_query.show()
+print(f"Coefficients: {model.coefficients}")
+print(f"Intercept: {model.intercept}")
 
 spark.stop()
