@@ -1,54 +1,49 @@
-from flask import Flask, request, jsonify
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, avg
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-app = Flask(__name__)
+spark = SparkSession.builder.appName("WeatherAnalysis").getOrCreate()
 
-# Sample data (tasks)
-tasks = [
-    {"id": 1, "title": "Task 1", "completed": False},
-    {"id": 2, "title": "Task 2", "completed": True},
-    {"id": 3, "title": "Task 3", "completed": False}
+data = [
+    ("2022-01-01", 25.0, 60, 0.1),
+    ("2022-01-02", 26.5, 55, 0.0),
+    ("2022-01-03", 24.8, 70, 0.2),
+    # ... more data ...
 ]
 
-# Endpoint to get all tasks
-@app.route('/tasks', methods=['GET'])
-def get_tasks():
-    return jsonify({'tasks': tasks})
+columns = ["Date", "TemperatureCelsius", "HumidityPercent", "PrecipitationInches"]
 
-# Endpoint to get a specific task by ID
-@app.route('/tasks/<int:task_id>', methods=['GET'])
-def get_task(task_id):
-    task = next((task for task in tasks if task['id'] == task_id), None)
-    if task:
-        return jsonify({'task': task})
-    return jsonify({'message': 'Task not found'}), 404
+df = spark.createDataFrame(data, columns)
 
-# Endpoint to create a new task
-@app.route('/tasks', methods=['POST'])
-def create_task():
-    new_task = {
-        'id': len(tasks) + 1,
-        'title': request.json['title'],
-        'completed': False
-    }
-    tasks.append(new_task)
-    return jsonify({'task': new_task}), 201
 
-# Endpoint to update a task by ID
-@app.route('/tasks/<int:task_id>', methods=['PUT'])
-def update_task(task_id):
-    task = next((task for task in tasks if task['id'] == task_id), None)
-    if task:
-        task['title'] = request.json['title']
-        task['completed'] = request.json['completed']
-        return jsonify({'task': task})
-    return jsonify({'message': 'Task not found'}), 404
+df.show()
 
-# Endpoint to delete a task by ID
-@app.route('/tasks/<int:task_id>', methods=['DELETE'])
-def delete_task(task_id):
-    global tasks
-    tasks = [task for task in tasks if task['id'] != task_id]
-    return jsonify({'message': 'Task deleted successfully'})
+avg_temp = df.agg(avg("TemperatureCelsius").alias("AverageTemperature")).collect()[0]["AverageTemperature"]
+avg_humidity = df.agg(avg("HumidityPercent").alias("AverageHumidity")).collect()[0]["AverageHumidity"]
+total_precipitation = df.agg(avg("PrecipitationInches").alias("TotalPrecipitation")).collect()[0]["TotalPrecipitation"]
 
-if __name__ == '__main__':
-    app.run(debug=True)
+print(f"Average Temperature: {avg_temp:.2f}°C")
+print(f"Average Humidity: {avg_humidity:.2f}%")
+print(f"Total Precipitation: {total_precipitation:.2f} inches")
+
+# Visualize the results using Seaborn and Matplotlib
+sns.set(style="whitegrid")
+plt.figure(figsize=(12, 6))
+
+sns.lineplot(x="Date", y="TemperatureCelsius", data=df.toPandas(), label="Temperature (°C)", marker="o")
+plt.title("Daily Temperature Over Time")
+plt.xlabel("Date")
+plt.ylabel("Temperature (°C)")
+plt.xticks(rotation=45)
+plt.legend()
+plt.show()
+
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x="HumidityPercent", y="PrecipitationInches", data=df.toPandas(), color="blue")
+plt.title("Humidity vs. Precipitation")
+plt.xlabel("Humidity (%)")
+plt.ylabel("Precipitation (inches)")
+plt.show()
+
+spark.stop()
