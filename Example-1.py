@@ -1,22 +1,32 @@
-from pyspark import SparkContext, SparkConf
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml import Pipeline
+from pyspark.ml.evaluation import BinaryClassificationEvaluator
 
-conf = SparkConf().setAppName("WordCountApp")
+spark = SparkSession.builder.appName("SimplePySparkExample").getOrCreate()
 
-sc = SparkContext(conf=conf)
+data = [(1, 0.5, 0), (2, 1.0, 1), (3, 0.8, 0), (4, 1.2, 1), (5, 0.6, 0)]
 
-text_file_path = 'path/to/your/text/file'
+schema = ["ID", "Feature1", "Label"]
 
-text_rdd = sc.textFile(text_file_path)
+df = spark.createDataFrame(data, schema=schema)
 
-words = text_rdd.flatMap(lambda line: line.split(" "))
+df.show()
 
-word_count_tuples = words.map(lambda word: (word, 1))
+feature_cols = ["Feature1"]
+assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+df_features = assembler.transform(df)
 
-word_counts = word_count_tuples.reduceByKey(lambda x, y: x + y)
+train_data, test_data = df_features.randomSplit([0.8, 0.2], seed=42)
 
-result = word_counts.collect()
+lr = LogisticRegression(featuresCol="features", labelCol="Label")
+model = lr.fit(train_data)
 
-for (word, count) in result:
-    print(f"{word}: {count}")
+predictions = model.transform(test_data)
+evaluator = BinaryClassificationEvaluator(labelCol="Label")
+accuracy = evaluator.evaluate(predictions)
 
-sc.stop()
+print(f"Accuracy: {accuracy}")
+
+spark.stop()
